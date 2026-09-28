@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BallNote — Fiche joueur</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="ball">🏀</span> BallNote U15</div>
+  <nav>
+    <a href="index.html">Joueurs</a>
+    <a href="classement.html">Classement</a>
+    <a href="admin.html">Admin</a>
+  </nav>
+</header>
+<main>
+  <a class="back-link" href="index.html">&larr; Retour aux joueurs</a>
+  <div id="content">
+    <p class="empty">Chargement…</p>
+  </div>
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const id = Number(new URLSearchParams(location.search).get("id"));
+  const content = document.getElementById("content");
+  if (!id) {
+    content.innerHTML = `<p class="empty">Joueur introuvable.</p>`;
+    return;
+  }
+  try {
+    const [joueurs, matchs, notes] = await Promise.all([
+      apiGet("/api/joueurs"),
+      apiGet("/api/matchs"),
+      apiGet("/api/notes"),
+    ]);
+    const joueur = joueurs.find((j) => j.id === id);
+    if (!joueur) {
+      content.innerHTML = `<p class="empty">Joueur introuvable.</p>`;
+      return;
+    }
+    const matchsById = new Map(matchs.map((m) => [m.Id, m]));
+    const mesNotes = notes
+      .filter((n) => n.joueur_id === id)
+      .map((n) => ({ ...n, match: matchsById.get(n.match_id) }))
+      .filter((n) => n.match)
+      .sort((a, b) => new Date(b.match.date_match) - new Date(a.match.date_match));
+
+    const total = mesNotes.reduce((s, n) => s + (Number(n.note) || 0), 0);
+
+    let html = `
+      <div class="card" style="display:flex; align-items:center; gap:16px;">
+        <div class="avatar" style="width:64px;height:64px;font-size:1.3rem;">${initials(joueur.prenom, joueur.nom)}</div>
+        <div>
+          <h1 style="margin:0;">${joueur.prenom} ${joueur.nom}</h1>
+          <span class="badge">${total} pts cumulés sur ${mesNotes.length} match(s)</span>
+        </div>
+      </div>
+      <h2>Historique par match</h2>
+    `;
+
+    if (mesNotes.length === 0) {
+      html += `<p class="empty">Aucune note enregistrée pour l'instant.</p>`;
+    } else {
+      html += `<div class="card">`;
+      for (const n of mesNotes) {
+        const max = n.match.note_max ? ` / ${n.match.note_max}` : "";
+        html += `
+          <div class="note-row">
+            <div class="note-meta">
+              <div><strong>${n.match.adversaire || "Match"}</strong></div>
+              <div class="date">${formatDate(n.match.date_match)}${n.match.grille_titre ? " · " + n.match.grille_titre : ""}</div>
+              ${n.commentaire ? `<div class="note-comment">${n.commentaire}</div>` : ""}
+            </div>
+            <div class="note-value">${n.note}${max}</div>
+          </div>
+        `;
+      }
+      html += `</div>`;
+    }
+
+    content.innerHTML = html;
+  } catch (e) {
+    content.innerHTML = `<p class="empty">Erreur de chargement : ${e.message}</p>`;
+  }
+})();
+</script>
+</body>
+</html>

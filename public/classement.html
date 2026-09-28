@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BallNote — Classement</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="ball">🏀</span> BallNote U15</div>
+  <nav>
+    <a href="index.html">Joueurs</a>
+    <a href="classement.html">Classement</a>
+    <a href="admin.html">Admin</a>
+  </nav>
+</header>
+<main>
+  <h1>Classement cumulé</h1>
+  <div id="classement" class="card"></div>
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+(async () => {
+  const el = document.getElementById("classement");
+  try {
+    const [joueurs, notes] = await Promise.all([
+      apiGet("/api/joueurs"),
+      apiGet("/api/notes"),
+    ]);
+    const rows = buildClassement(joueurs, notes).filter((r) => r.matchsJoues > 0);
+    if (rows.length === 0) {
+      el.innerHTML = `<p class="empty">Pas encore de notes enregistrées.</p>`;
+      return;
+    }
+    const maxTotal = Math.max(...rows.map((r) => r.total), 1);
+    el.innerHTML = rows
+      .map((r, i) => {
+        const pct = Math.max(4, Math.round((r.total / maxTotal) * 100));
+        return `
+          <div class="rank-row">
+            <div class="rank-num ${i === 0 ? "top1" : ""}">${i + 1}</div>
+            <div class="rank-name">
+              <a href="joueur.html?id=${r.joueur.id}" style="color:inherit;text-decoration:none;">
+                ${r.joueur.prenom} ${r.joueur.nom}
+              </a>
+              <div style="font-size:0.75rem;color:#6b7280;">${r.matchsJoues} match(s) noté(s)</div>
+            </div>
+            <div class="rank-bar-wrap"><div class="rank-bar" style="width:${pct}%"></div></div>
+            <div class="rank-total">${r.total}</div>
+          </div>
+        `;
+      })
+      .join("");
+  } catch (e) {
+    el.innerHTML = `<p class="empty">Erreur de chargement : ${e.message}</p>`;
+  }
+})();
+</script>
+</body>
+</html>

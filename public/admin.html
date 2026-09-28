@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BallNote — Admin</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="ball">🏀</span> BallNote U15</div>
+  <nav>
+    <a href="index.html">Joueurs</a>
+    <a href="classement.html">Classement</a>
+    <a href="admin.html">Admin</a>
+  </nav>
+</header>
+<main>
+  <h1>Espace coach</h1>
+
+  <div class="card" id="login-card">
+    <label>Mot de passe admin</label><br><br>
+    <input type="password" id="password" style="padding:10px;border:1px solid #ddd;border-radius:8px;width:100%;max-width:300px;">
+    <button class="btn" id="login-btn" style="margin-left:8px;">Entrer</button>
+    <p id="login-error" class="msg err" style="display:none;margin-top:10px;"></p>
+  </div>
+
+  <div id="admin-area" style="display:none;">
+    <div class="card">
+      <h2 style="margin-top:0;">1. Choisir ou créer un match</h2>
+      <label>Match existant</label>
+      <select id="match-select" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin:8px 0 16px;">
+        <option value="">— Créer un nouveau match —</option>
+      </select>
+
+      <form class="admin-form" id="match-form">
+        <div>
+          <label>Date du match</label>
+          <input type="date" name="date_match" required>
+        </div>
+        <div>
+          <label>Adversaire</label>
+          <input type="text" name="adversaire" placeholder="ex: ASPO Metz" required>
+        </div>
+        <div>
+          <label>Lieu</label>
+          <input type="text" name="lieu" placeholder="Domicile / Extérieur">
+        </div>
+        <div style="display:flex;gap:12px;">
+          <div style="flex:1;">
+            <label>Score équipe</label>
+            <input type="number" name="score_equipe">
+          </div>
+          <div style="flex:1;">
+            <label>Score adversaire</label>
+            <input type="number" name="score_adversaire">
+          </div>
+        </div>
+        <div>
+          <label>Titre de la grille d'évaluation</label>
+          <input type="text" name="grille_titre" placeholder="ex: Grille défense/attaque S3">
+        </div>
+        <div>
+          <label>Description / barème de la grille</label>
+          <textarea name="grille_description" rows="3" placeholder="Détail des critères notés"></textarea>
+        </div>
+        <div>
+          <label>Note maximale possible</label>
+          <input type="number" name="note_max" placeholder="ex: 20">
+        </div>
+        <div>
+          <label>Commentaire général sur le match</label>
+          <textarea name="commentaire" rows="2"></textarea>
+        </div>
+        <button class="btn" type="submit">Créer ce match</button>
+      </form>
+      <p id="match-msg" style="margin-top:10px;"></p>
+    </div>
+
+    <div class="card" id="notes-card" style="display:none;">
+      <h2 style="margin-top:0;">2. Saisir les notes — <span id="notes-match-label"></span></h2>
+      <form id="notes-form">
+        <div class="notes-grid" id="notes-grid"></div>
+        <button class="btn" type="submit" style="margin-top:16px;">Enregistrer les notes</button>
+      </form>
+      <p id="notes-msg" style="margin-top:10px;"></p>
+    </div>
+  </div>
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+let PASSWORD = sessionStorage.getItem("ballnote_admin_pw") || "";
+let JOUEURS = [];
+let MATCHS = [];
+let CURRENT_MATCH = null;
+
+function showLoggedIn() {
+  document.getElementById("login-card").style.display = "none";
+  document.getElementById("admin-area").style.display = "block";
+}
+
+async function tryLogin(pw) {
+  // On valide le mot de passe en tentant un appel protégé inoffensif.
+  const res = await fetch(`${API_BASE}/api/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Admin-Password": pw },
+    body: JSON.stringify({ notes: [] }),
+  });
+  if (res.status === 401) return false;
+  return true; // 400 "no notes provided" = mot de passe accepté
+}
+
+document.getElementById("login-btn").addEventListener("click", async () => {
+  const pw = document.getElementById("password").value;
+  const err = document.getElementById("login-error");
+  err.style.display = "none";
+  const ok = await tryLogin(pw);
+  if (!ok) {
+    err.textContent = "Mot de passe incorrect.";
+    err.style.display = "block";
+    return;
+  }
+  PASSWORD = pw;
+  sessionStorage.setItem("ballnote_admin_pw", pw);
+  showLoggedIn();
+  init();
+});
+
+async function init() {
+  [JOUEURS, MATCHS] = await Promise.all([apiGet("/api/joueurs"), apiGet("/api/matchs")]);
+  JOUEURS.sort((a, b) => (a.prenom || "").localeCompare(b.prenom || ""));
+
+  const select = document.getElementById("match-select");
+  MATCHS.slice().reverse().forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.Id;
+    opt.textContent = `${formatDate(m.date_match)} vs ${m.adversaire || "?"}`;
+    select.appendChild(opt);
+  });
+  select.addEventListener("change", () => {
+    if (select.value) {
+      const m = MATCHS.find((x) => x.Id === Number(select.value));
+      openNotesFor(m);
+    } else {
+      document.getElementById("notes-card").style.display = "none";
+    }
+  });
+}
+
+document.getElementById("match-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("match-msg");
+  msg.textContent = "Création en cours…";
+  const fd = new FormData(e.target);
+  const body = Object.fromEntries(fd.entries());
+  try {
+    const created = await apiPost("/api/matchs", body, PASSWORD);
+    msg.innerHTML = `<span style="color:#1f9d55;">Match créé ✔</span>`;
+    MATCHS.push(created);
+    const opt = document.createElement("option");
+    opt.value = created.Id;
+    opt.textContent = `${formatDate(created.date_match)} vs ${created.adversaire || "?"}`;
+    const select = document.getElementById("match-select");
+    select.insertBefore(opt, select.children[1]);
+    select.value = created.Id;
+    openNotesFor(created);
+  } catch (err) {
+    msg.innerHTML = `<span style="color:#d33;">Erreur : ${err.message}</span>`;
+  }
+});
+
+function openNotesFor(match) {
+  CURRENT_MATCH = match;
+  document.getElementById("notes-card").style.display = "block";
+  document.getElementById("notes-match-label").textContent = `${formatDate(match.date_match)} vs ${match.adversaire || "?"}`;
+  const grid = document.getElementById("notes-grid");
+  grid.innerHTML = "";
+  JOUEURS.forEach((j) => {
+    const label = document.createElement("div");
+    label.className = "pname";
+    label.textContent = `${j.prenom} ${j.nom}`;
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "0.5";
+    input.dataset.joueurId = j.id;
+    input.dataset.prenom = j.prenom;
+    input.dataset.nom = j.nom;
+    input.placeholder = match.note_max ? `/ ${match.note_max}` : "note";
+    grid.appendChild(label);
+    grid.appendChild(input);
+  });
+}
+
+document.getElementById("notes-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("notes-msg");
+  if (!CURRENT_MATCH) return;
+  const inputs = document.querySelectorAll("#notes-grid input");
+  const notes = [];
+  inputs.forEach((inp) => {
+    if (inp.value !== "") {
+      notes.push({
+        match_id: CURRENT_MATCH.Id,
+        joueur_id: Number(inp.dataset.joueurId),
+        joueur_nom: inp.dataset.nom,
+        joueur_prenom: inp.dataset.prenom,
+        note: Number(inp.value),
+      });
+    }
+  });
+  if (notes.length === 0) {
+    msg.innerHTML = `<span style="color:#d33;">Renseigne au moins une note.</span>`;
+    return;
+  }
+  msg.textContent = "Enregistrement…";
+  try {
+    await apiPost("/api/notes", { notes }, PASSWORD);
+    msg.innerHTML = `<span style="color:#1f9d55;">${notes.length} note(s) enregistrée(s) ✔</span>`;
+  } catch (err) {
+    msg.innerHTML = `<span style="color:#d33;">Erreur : ${err.message}</span>`;
+  }
+});
+
+if (PASSWORD) {
+  tryLogin(PASSWORD).then((ok) => {
+    if (ok) { showLoggedIn(); init(); }
+    else sessionStorage.removeItem("ballnote_admin_pw");
+  });
+}
+</script>
+</body>
+</html>

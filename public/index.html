@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BallNote — U15</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="ball">🏀</span> BallNote U15</div>
+  <nav>
+    <a href="index.html">Joueurs</a>
+    <a href="classement.html">Classement</a>
+    <a href="admin.html">Admin</a>
+  </nav>
+</header>
+<main>
+  <h1>Les joueurs</h1>
+  <div id="joueurs" class="grid"></div>
+  <p class="empty" id="empty" style="display:none">Aucun joueur trouvé.</p>
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+(async () => {
+  try {
+    const joueurs = await apiGet("/api/joueurs");
+    const container = document.getElementById("joueurs");
+    if (joueurs.length === 0) {
+      document.getElementById("empty").style.display = "block";
+      return;
+    }
+    joueurs
+      .sort((a, b) => (a.prenom || "").localeCompare(b.prenom || ""))
+      .forEach((j) => {
+        const a = document.createElement("a");
+        a.className = "player-tile";
+        a.href = `joueur.html?id=${j.id}`;
+        a.innerHTML = `
+          <div class="avatar">${initials(j.prenom, j.nom)}</div>
+          <div class="name">${j.prenom || ""}</div>
+          <div class="sub">${j.nom || ""}</div>
+        `;
+        container.appendChild(a);
+      });
+  } catch (e) {
+    document.getElementById("joueurs").innerHTML = `<p class="empty">Erreur de chargement : ${e.message}</p>`;
+  }
+})();
+</script>
+</body>
+</html>
