@@ -65,6 +65,7 @@
         <button class="btn" type="submit">Enregistrer le match</button>
       </form>
       <p id="match-msg" style="margin-top:10px;"></p>
+      <a id="notes-link" class="btn secondary" style="display:none;text-decoration:none;" href="#">Saisir les notes de ce match &rarr;</a>
     </div>
   </div>
 </main>
@@ -104,7 +105,10 @@ document.getElementById("match-form").addEventListener("submit", async (e) => {
   msg.textContent = "Enregistrement…";
   try {
     const created = await apiPost("/api/matchs", body, PASSWORD);
-    msg.innerHTML = `<span style="color:#1f9d55;">Match enregistré ✔ — <a href="admin-notes.html?match=${created.Id}">saisir les notes de ce match</a></span>`;
+    msg.innerHTML = `<span style="color:#1f9d55;">Match enregistré ✔</span>`;
+    const link = document.getElementById("notes-link");
+    link.href = `admin-notes.html?match=${created.Id}`;
+    link.style.display = "inline-block";
     e.target.reset();
     document.getElementById("criteres_text").value = DEFAULT_CRITERES.join("\n");
   } catch (err) {
