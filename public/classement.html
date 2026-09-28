@@ -29,7 +29,7 @@
       apiGet("/api/joueurs"),
       apiGet("/api/notes"),
     ]);
-    const rows = buildClassement(joueurs, notes).filter((r) => r.matchsJoues > 0);
+    const rows = buildClassement(joueurs, notes);
     if (rows.length === 0) {
       el.innerHTML = `<p class="empty">Pas encore de notes enregistrées.</p>`;
       return;
