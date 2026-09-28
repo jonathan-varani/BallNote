@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BallNote — Saisie des notes</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="ball">🏀</span> BallNote U15</div>
+  <nav>
+    <a href="index.html">Joueurs</a>
+    <a href="classement.html">Classement</a>
+    <a href="admin.html">Admin</a>
+  </nav>
+</header>
+<main>
+  <h1>Espace coach — Attribuer les points</h1>
+
+  <div class="card" id="login-card">
+    <label>Mot de passe admin</label><br><br>
+    <input type="password" id="password" style="padding:10px;border:1px solid #ddd;border-radius:8px;width:100%;max-width:300px;">
+    <button class="btn" id="login-btn" style="margin-left:8px;">Entrer</button>
+    <p id="login-error" class="msg err" style="display:none;margin-top:10px;"></p>
+  </div>
+
+  <div id="admin-area" style="display:none;">
+    <div class="card">
+      <label>Match</label>
+      <select id="match-select" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:8px;margin:8px 0 0;">
+        <option value="">— Choisis un match —</option>
+      </select>
+      <p style="margin-top:8px;"><a href="admin.html" style="color:var(--navy);font-weight:600;">+ créer un nouveau match</a></p>
+    </div>
+
+    <div class="card" id="notes-card" style="display:none;">
+      <h2 style="margin-top:0;">Cocher les critères réussis — <span id="notes-match-label"></span></h2>
+      <form id="notes-form">
+        <div style="overflow-x:auto;">
+          <table id="notes-table" class="checklist-table"></table>
+        </div>
+        <button class="btn" type="submit" style="margin-top:16px;">Enregistrer les notes</button>
+      </form>
+      <p id="notes-msg" style="margin-top:10px;"></p>
+    </div>
+  </div>
+</main>
+<script src="config.js"></script>
+<script src="app.js"></script>
+<script>
+let PASSWORD = "";
+let JOUEURS = [];
+let MATCHS = [];
+let CURRENT_MATCH = null;
+
+async function init() {
+  [JOUEURS, MATCHS] = await Promise.all([apiGet("/api/joueurs"), apiGet("/api/matchs")]);
+  JOUEURS.sort((a, b) => (a.prenom || "").localeCompare(b.prenom || ""));
+
+  const select = document.getElementById("match-select");
+  MATCHS.slice().reverse().forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m.Id;
+    opt.textContent = `${formatDate(m.date_match)} vs ${m.adversaire || "?"}`;
+    select.appendChild(opt);
+  });
+  select.addEventListener("change", () => {
+    if (select.value) {
+      openNotesFor(MATCHS.find((x) => x.Id === Number(select.value)));
+    } else {
+      document.getElementById("notes-card").style.display = "none";
+    }
+  });
+
+  const preselect = new URLSearchParams(location.search).get("match");
+  if (preselect && MATCHS.some((m) => m.Id === Number(preselect))) {
+    select.value = preselect;
+    openNotesFor(MATCHS.find((m) => m.Id === Number(preselect)));
+  }
+}
+
+function openNotesFor(match) {
+  CURRENT_MATCH = match;
+  document.getElementById("notes-card").style.display = "block";
+  document.getElementById("notes-match-label").textContent = `${formatDate(match.date_match)} vs ${match.adversaire || "?"}`;
+  const criteres = parseCriteres(match);
+  const table = document.getElementById("notes-table");
+
+  let thead = `<tr><th style="min-width:140px;">Joueur</th>`;
+  criteres.forEach((c, i) => (thead += `<th title="${c}">C${i + 1}</th>`));
+  thead += `<th>Total</th></tr>`;
+
+  let rows = "";
+  JOUEURS.forEach((j) => {
+    rows += `<tr data-joueur-id="${j.id}" data-prenom="${j.prenom}" data-nom="${j.nom}">`;
+    rows += `<td class="pname">${j.prenom} ${j.nom}</td>`;
+    criteres.forEach((c, i) => {
+      rows += `<td style="text-align:center;"><input type="checkbox" data-critere-index="${i}" data-critere-label="${c.replace(/"/g, "&quot;")}"></td>`;
+    });
+    rows += `<td class="row-total" style="text-align:center;font-weight:700;">0</td></tr>`;
+  });
+
+  table.innerHTML = `<thead>${thead}</thead><tbody>${rows}</tbody>`;
+
+  table.querySelectorAll("tbody tr").forEach((tr) => {
+    const total = tr.querySelector(".row-total");
+    tr.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        total.textContent = tr.querySelectorAll("input:checked").length;
+      });
+    });
+  });
+
+  const legend = criteres.map((c, i) => `C${i + 1} = ${c}`).join(" · ");
+  let legendEl = document.getElementById("criteres-legend");
+  if (!legendEl) {
+    legendEl = document.createElement("p");
+    legendEl.id = "criteres-legend";
+    legendEl.style.cssText = "font-size:0.8rem;color:#6b7280;margin-top:10px;";
+    table.insertAdjacentElement("afterend", legendEl);
+  }
+  legendEl.textContent = legend;
+}
+
+document.getElementById("notes-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("notes-msg");
+  if (!CURRENT_MATCH) return;
+  const rows = document.querySelectorAll("#notes-table tbody tr");
+  const notes = [];
+  rows.forEach((tr) => {
+    const checkboxes = tr.querySelectorAll("input[type=checkbox]");
+    const checked = Array.from(checkboxes).filter((cb) => cb.checked);
+    if (checked.length === 0) return; // joueur non noté sur ce match (ex: absent)
+    const details = {};
+    checkboxes.forEach((cb) => { details[cb.dataset.critereLabel] = cb.checked; });
+    notes.push({
+      match_id: CURRENT_MATCH.Id,
+      joueur_id: Number(tr.dataset.joueurId),
+      joueur_nom: tr.dataset.nom,
+      joueur_prenom: tr.dataset.prenom,
+      note: checked.length,
+      details,
+    });
+  });
+  if (notes.length === 0) {
+    msg.innerHTML = `<span style="color:#d33;">Coche au moins un critère pour au moins un joueur.</span>`;
+    return;
+  }
+  msg.textContent = "Enregistrement…";
+  try {
+    await apiPost("/api/notes", { notes }, PASSWORD);
+    msg.innerHTML = `<span style="color:#1f9d55;">${notes.length} note(s) enregistrée(s) ✔</span>`;
+  } catch (err) {
+    msg.innerHTML = `<span style="color:#d33;">Erreur : ${err.message}</span>`;
+  }
+});
+
+setupAdminLogin((pw) => { PASSWORD = pw; init(); });
+</script>
+</body>
+</html>

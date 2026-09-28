@@ -31,6 +31,61 @@ function formatDate(d) {
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+async function checkAdminPassword(pw) {
+  // On valide le mot de passe en tentant un appel protégé inoffensif.
+  const res = await fetch(`${API_BASE}/api/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Admin-Password": pw },
+    body: JSON.stringify({ notes: [] }),
+  });
+  return res.status !== 401; // 400 "no notes provided" = mot de passe accepté
+}
+
+// Gère l'écran de connexion partagé par les pages admin. Appelle onReady(password) une fois connecté.
+function setupAdminLogin(onReady) {
+  const loginCard = document.getElementById("login-card");
+  const adminArea = document.getElementById("admin-area");
+  const passwordInput = document.getElementById("password");
+  const loginBtn = document.getElementById("login-btn");
+  const loginError = document.getElementById("login-error");
+
+  function showLoggedIn(pw) {
+    loginCard.style.display = "none";
+    adminArea.style.display = "block";
+    onReady(pw);
+  }
+
+  loginBtn.addEventListener("click", async () => {
+    const pw = passwordInput.value;
+    loginError.style.display = "none";
+    const ok = await checkAdminPassword(pw);
+    if (!ok) {
+      loginError.textContent = "Mot de passe incorrect.";
+      loginError.style.display = "block";
+      return;
+    }
+    sessionStorage.setItem("ballnote_admin_pw", pw);
+    showLoggedIn(pw);
+  });
+
+  const saved = sessionStorage.getItem("ballnote_admin_pw");
+  if (saved) {
+    checkAdminPassword(saved).then((ok) => {
+      if (ok) showLoggedIn(saved);
+      else sessionStorage.removeItem("ballnote_admin_pw");
+    });
+  }
+}
+
+function parseCriteres(match) {
+  try {
+    const arr = JSON.parse(match.criteres || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
 // Regroupe les notes par joueur et calcule le total cumulé + le nombre de matchs notés.
 function buildClassement(joueurs, notes) {
   const parJoueur = new Map();
