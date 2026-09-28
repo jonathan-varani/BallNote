@@ -58,15 +58,11 @@
         </div>
         <div>
           <label>Titre de la grille d'évaluation</label>
-          <input type="text" name="grille_titre" placeholder="ex: Grille défense/attaque S3">
+          <input type="text" name="grille_titre" placeholder="ex: Grille défense S3">
         </div>
         <div>
-          <label>Description / barème de la grille</label>
-          <textarea name="grille_description" rows="3" placeholder="Détail des critères notés"></textarea>
-        </div>
-        <div>
-          <label>Note maximale possible</label>
-          <input type="number" name="note_max" placeholder="ex: 20">
+          <label>Critères de la grille (1 point par critère coché dans le tableau ci-dessous, 1 par ligne)</label>
+          <textarea name="criteres_text" id="criteres_text" rows="10"></textarea>
         </div>
         <div>
           <label>Commentaire général sur le match</label>
@@ -78,9 +74,11 @@
     </div>
 
     <div class="card" id="notes-card" style="display:none;">
-      <h2 style="margin-top:0;">2. Saisir les notes — <span id="notes-match-label"></span></h2>
+      <h2 style="margin-top:0;">2. Cocher les critères réussis — <span id="notes-match-label"></span></h2>
       <form id="notes-form">
-        <div class="notes-grid" id="notes-grid"></div>
+        <div style="overflow-x:auto;">
+          <table id="notes-table" class="checklist-table"></table>
+        </div>
         <button class="btn" type="submit" style="margin-top:16px;">Enregistrer les notes</button>
       </form>
       <p id="notes-msg" style="margin-top:10px;"></p>
@@ -94,6 +92,20 @@ let PASSWORD = sessionStorage.getItem("ballnote_admin_pw") || "";
 let JOUEURS = [];
 let MATCHS = [];
 let CURRENT_MATCH = null;
+
+const DEFAULT_CRITERES = [
+  "Savoir quand fermer la ligne de passe",
+  "Réussir à fermer la ligne de passe",
+  "Tenir son duel dans l'axe",
+  "Orienter son adversaire vers la ligne de fond (baseline)",
+  "Se positionner en aide",
+  "Intervenir en aide",
+  "Se positionner en aide de l'aide",
+  "Intervenir en aide de l'aide",
+  "Laisser entrer la balle sur un côté",
+  "Communiquer (balle/aide/aide de l'aide/mort)",
+];
+document.getElementById("criteres_text").value = DEFAULT_CRITERES.join("\n");
 
 function showLoggedIn() {
   document.getElementById("login-card").style.display = "none";
@@ -154,6 +166,15 @@ document.getElementById("match-form").addEventListener("submit", async (e) => {
   msg.textContent = "Création en cours…";
   const fd = new FormData(e.target);
   const body = Object.fromEntries(fd.entries());
+  body.criteres = (body.criteres_text || "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  delete body.criteres_text;
+  if (body.criteres.length === 0) {
+    msg.innerHTML = `<span style="color:#d33;">Ajoute au moins un critère à la grille.</span>`;
+    return;
+  }
   try {
     const created = await apiPost("/api/matchs", body, PASSWORD);
     msg.innerHTML = `<span style="color:#1f9d55;">Match créé ✔</span>`;
@@ -170,47 +191,82 @@ document.getElementById("match-form").addEventListener("submit", async (e) => {
   }
 });
 
+function parseCriteres(match) {
+  try {
+    const arr = JSON.parse(match.criteres || "[]");
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
 function openNotesFor(match) {
   CURRENT_MATCH = match;
   document.getElementById("notes-card").style.display = "block";
   document.getElementById("notes-match-label").textContent = `${formatDate(match.date_match)} vs ${match.adversaire || "?"}`;
-  const grid = document.getElementById("notes-grid");
-  grid.innerHTML = "";
+  const criteres = parseCriteres(match);
+  const table = document.getElementById("notes-table");
+
+  let thead = `<tr><th style="min-width:140px;">Joueur</th>`;
+  criteres.forEach((c, i) => (thead += `<th title="${c}">C${i + 1}</th>`));
+  thead += `<th>Total</th></tr>`;
+
+  let rows = "";
   JOUEURS.forEach((j) => {
-    const label = document.createElement("div");
-    label.className = "pname";
-    label.textContent = `${j.prenom} ${j.nom}`;
-    const input = document.createElement("input");
-    input.type = "number";
-    input.step = "0.5";
-    input.dataset.joueurId = j.id;
-    input.dataset.prenom = j.prenom;
-    input.dataset.nom = j.nom;
-    input.placeholder = match.note_max ? `/ ${match.note_max}` : "note";
-    grid.appendChild(label);
-    grid.appendChild(input);
+    rows += `<tr data-joueur-id="${j.id}" data-prenom="${j.prenom}" data-nom="${j.nom}">`;
+    rows += `<td class="pname">${j.prenom} ${j.nom}</td>`;
+    criteres.forEach((c, i) => {
+      rows += `<td style="text-align:center;"><input type="checkbox" data-critere-index="${i}" data-critere-label="${c.replace(/"/g, "&quot;")}"></td>`;
+    });
+    rows += `<td class="row-total" style="text-align:center;font-weight:700;">0</td></tr>`;
   });
+
+  table.innerHTML = `<thead>${thead}</thead><tbody>${rows}</tbody>`;
+
+  table.querySelectorAll("tbody tr").forEach((tr) => {
+    const total = tr.querySelector(".row-total");
+    tr.querySelectorAll("input[type=checkbox]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        total.textContent = tr.querySelectorAll("input:checked").length;
+      });
+    });
+  });
+
+  // Rappel de la grille sous le tableau
+  const legend = criteres.map((c, i) => `C${i + 1} = ${c}`).join(" · ");
+  let legendEl = document.getElementById("criteres-legend");
+  if (!legendEl) {
+    legendEl = document.createElement("p");
+    legendEl.id = "criteres-legend";
+    legendEl.style.cssText = "font-size:0.8rem;color:#6b7280;margin-top:10px;";
+    table.insertAdjacentElement("afterend", legendEl);
+  }
+  legendEl.textContent = legend;
 }
 
 document.getElementById("notes-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const msg = document.getElementById("notes-msg");
   if (!CURRENT_MATCH) return;
-  const inputs = document.querySelectorAll("#notes-grid input");
+  const rows = document.querySelectorAll("#notes-table tbody tr");
   const notes = [];
-  inputs.forEach((inp) => {
-    if (inp.value !== "") {
-      notes.push({
-        match_id: CURRENT_MATCH.Id,
-        joueur_id: Number(inp.dataset.joueurId),
-        joueur_nom: inp.dataset.nom,
-        joueur_prenom: inp.dataset.prenom,
-        note: Number(inp.value),
-      });
-    }
+  rows.forEach((tr) => {
+    const checkboxes = tr.querySelectorAll("input[type=checkbox]");
+    const checked = Array.from(checkboxes).filter((cb) => cb.checked);
+    if (checked.length === 0) return; // joueur non noté sur ce match (ex: absent)
+    const details = {};
+    checkboxes.forEach((cb) => { details[cb.dataset.critereLabel] = cb.checked; });
+    notes.push({
+      match_id: CURRENT_MATCH.Id,
+      joueur_id: Number(tr.dataset.joueurId),
+      joueur_nom: tr.dataset.nom,
+      joueur_prenom: tr.dataset.prenom,
+      note: checked.length,
+      details,
+    });
   });
   if (notes.length === 0) {
-    msg.innerHTML = `<span style="color:#d33;">Renseigne au moins une note.</span>`;
+    msg.innerHTML = `<span style="color:#d33;">Coche au moins un critère pour au moins un joueur.</span>`;
     return;
   }
   msg.textContent = "Enregistrement…";

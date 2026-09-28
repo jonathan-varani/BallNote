@@ -171,3 +171,9 @@ form.admin-form input, form.admin-form textarea {
 .msg.err { background: #fdecec; color: var(--red); }
 
 .back-link { display: inline-block; margin-bottom: 12px; color: var(--navy); text-decoration: none; font-weight: 600; font-size: 0.9rem; }
+
+.checklist-table { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+.checklist-table th, .checklist-table td { border: 1px solid #eee; padding: 6px 8px; }
+.checklist-table thead th { background: var(--navy); color: #fff; font-weight: 600; cursor: help; }
+.checklist-table tbody tr:nth-child(even) { background: #fafafa; }
+.checklist-table input[type="checkbox"] { width: 18px; height: 18px; }

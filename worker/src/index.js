@@ -88,7 +88,8 @@ export default {
           score_adversaire: body.score_adversaire ?? null,
           grille_titre: body.grille_titre || "",
           grille_description: body.grille_description || "",
-          note_max: body.note_max ?? null,
+          criteres: JSON.stringify(body.criteres || []),
+          note_max: body.note_max ?? (body.criteres ? body.criteres.length : null),
           commentaire: body.commentaire || "",
         };
         const created = await ncFetch(env, `/api/v2/tables/${TABLE_MATCHS}/records`, {
@@ -114,6 +115,7 @@ export default {
           joueur_nom: n.joueur_nom || "",
           joueur_prenom: n.joueur_prenom || "",
           note: n.note,
+          details: JSON.stringify(n.details || {}),
           commentaire: n.commentaire || "",
         }));
         if (records.length === 0) return json({ error: "no notes provided" }, 400);
