@@ -56,7 +56,7 @@ let CURRENT_MATCH = null;
 let NOTES = [];
 
 async function init() {
-  [JOUEURS, MATCHS, NOTES] = await Promise.all([apiGet("/api/joueurs"), apiGet("/api/matchs"), apiGet("/api/notes")]);
+  [JOUEURS, MATCHS, NOTES] = await apiGetSequence(["/api/joueurs", "/api/matchs", "/api/notes"]);
   JOUEURS.sort((a, b) => (a.prenom || "").localeCompare(b.prenom || ""));
 
   const select = document.getElementById("match-select");

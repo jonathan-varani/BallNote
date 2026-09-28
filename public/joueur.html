@@ -32,11 +32,7 @@
     return;
   }
   try {
-    const [joueurs, matchs, notes] = await Promise.all([
-      apiGet("/api/joueurs"),
-      apiGet("/api/matchs"),
-      apiGet("/api/notes"),
-    ]);
+    const [joueurs, matchs, notes] = await apiGetSequence(["/api/joueurs", "/api/matchs", "/api/notes"]);
     const joueur = joueurs.find((j) => j.id === id);
     if (!joueur) {
       content.innerHTML = `<p class="empty">Joueur introuvable.</p>`;

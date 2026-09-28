@@ -1,3 +1,11 @@
+// Récupère plusieurs endpoints l'un après l'autre plutôt qu'en parallèle,
+// pour éviter de déclencher la limite de requêtes concurrentes de NocoDB.
+async function apiGetSequence(paths) {
+  const results = [];
+  for (const p of paths) results.push(await apiGet(p));
+  return results;
+}
+
 async function apiGet(path) {
   const res = await fetch(`${API_BASE}${path}`);
   if (!res.ok) throw new Error(`Erreur API (${res.status})`);

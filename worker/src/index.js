@@ -17,7 +17,11 @@ function json(data, status = 200) {
   }));
 }
 
-async function ncFetch(env, path, options = {}) {
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ncFetch(env, path, options = {}, attempt = 0) {
   const res = await fetch(`${NOCODB_API}${path}`, {
     ...options,
     headers: {
@@ -26,6 +30,11 @@ async function ncFetch(env, path, options = {}) {
       ...(options.headers || {}),
     },
   });
+  if (res.status === 429 && attempt < 8) {
+    // NocoDB limite les requêtes concurrentes ; on retente avec un backoff progressif.
+    await sleep(500 * (attempt + 1) + Math.random() * 300);
+    return ncFetch(env, path, options, attempt + 1);
+  }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw new Error(`NocoDB ${res.status}: ${text.slice(0, 300)}`);
@@ -42,6 +51,30 @@ async function ncList(env, tableId) {
     offset += 100;
   }
   return rows;
+}
+
+// Petit cache d'arête (quelques secondes) pour absorber les rafales de requêtes
+// concurrentes venant du frontend, sans dépasser la limite de débit de NocoDB.
+function cacheKey(name) {
+  return new Request(`https://ballnote-cache.internal/${name}`);
+}
+
+async function cachedList(env, tableId, name, ttlSeconds = 20) {
+  const cache = caches.default;
+  const key = cacheKey(name);
+  const hit = await cache.match(key);
+  if (hit) return hit.json();
+
+  const rows = await ncList(env, tableId);
+  const resp = new Response(JSON.stringify(rows), {
+    headers: { "Content-Type": "application/json", "Cache-Control": `max-age=${ttlSeconds}` },
+  });
+  await cache.put(key, resp.clone());
+  return rows;
+}
+
+async function invalidateCache(name) {
+  await caches.default.delete(cacheKey(name));
 }
 
 function requireAdmin(request, env) {
@@ -61,7 +94,7 @@ export default {
     try {
       // ── Joueurs (données publiques uniquement) ──────────────────────────
       if (path === "/api/joueurs" && request.method === "GET") {
-        const rows = await ncList(env, TABLE_JOUEURS);
+        const rows = await cachedList(env, TABLE_JOUEURS, "joueurs");
         const joueurs = rows.map((r) => ({
           id: r.Id,
           nom: r.joueur_nom,
@@ -72,7 +105,7 @@ export default {
 
       // ── Matchs ───────────────────────────────────────────────────────────
       if (path === "/api/matchs" && request.method === "GET") {
-        const rows = await ncList(env, TABLE_MATCHS);
+        const rows = await cachedList(env, TABLE_MATCHS, "matchs");
         rows.sort((a, b) => new Date(a.date_match) - new Date(b.date_match));
         return json(rows);
       }
@@ -96,12 +129,13 @@ export default {
           method: "POST",
           body: JSON.stringify(record),
         });
+        await invalidateCache("matchs");
         return json(created);
       }
 
       // ── Notes ────────────────────────────────────────────────────────────
       if (path === "/api/notes" && request.method === "GET") {
-        const rows = await ncList(env, TABLE_NOTES);
+        const rows = await cachedList(env, TABLE_NOTES, "notes");
         return json(rows);
       }
 
@@ -150,6 +184,7 @@ export default {
           });
           results.push(...(Array.isArray(updated) ? updated : [updated]));
         }
+        await invalidateCache("notes");
         return json(results);
       }
 

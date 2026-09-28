@@ -25,10 +25,7 @@
 (async () => {
   const el = document.getElementById("classement");
   try {
-    const [joueurs, notes] = await Promise.all([
-      apiGet("/api/joueurs"),
-      apiGet("/api/notes"),
-    ]);
+    const [joueurs, notes] = await apiGetSequence(["/api/joueurs", "/api/notes"]);
     const rows = buildClassement(joueurs, notes);
     if (rows.length === 0) {
       el.innerHTML = `<p class="empty">Pas encore de notes enregistrées.</p>`;
