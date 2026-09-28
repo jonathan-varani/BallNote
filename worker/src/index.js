@@ -109,22 +109,48 @@ export default {
         if (!requireAdmin(request, env)) return json({ error: "unauthorized" }, 401);
         const body = await request.json();
         const notes = Array.isArray(body.notes) ? body.notes : [];
-        const records = notes.map((n) => ({
-          match_id: n.match_id,
-          joueur_id: n.joueur_id,
-          joueur_nom: n.joueur_nom || "",
-          joueur_prenom: n.joueur_prenom || "",
-          note: n.note,
-          present: n.present !== false,
-          details: JSON.stringify(n.details || {}),
-          commentaire: n.commentaire || "",
-        }));
-        if (records.length === 0) return json({ error: "no notes provided" }, 400);
-        const created = await ncFetch(env, `/api/v2/tables/${TABLE_NOTES}/records`, {
-          method: "POST",
-          body: JSON.stringify(records),
-        });
-        return json(created);
+        if (notes.length === 0) return json({ error: "no notes provided" }, 400);
+
+        // Upsert : une note existante pour ce (match, joueur) est mise à jour plutôt que dupliquée.
+        const existing = await ncList(env, TABLE_NOTES);
+        const existingByKey = new Map(
+          existing.map((r) => [`${r.match_id}:${r.joueur_id}`, r.Id])
+        );
+
+        const toCreate = [];
+        const toUpdate = [];
+        for (const n of notes) {
+          const record = {
+            match_id: n.match_id,
+            joueur_id: n.joueur_id,
+            joueur_nom: n.joueur_nom || "",
+            joueur_prenom: n.joueur_prenom || "",
+            note: n.note,
+            present: n.present !== false,
+            details: JSON.stringify(n.details || {}),
+            commentaire: n.commentaire || "",
+          };
+          const existingId = existingByKey.get(`${n.match_id}:${n.joueur_id}`);
+          if (existingId) toUpdate.push({ Id: existingId, ...record });
+          else toCreate.push(record);
+        }
+
+        const results = [];
+        if (toCreate.length > 0) {
+          const created = await ncFetch(env, `/api/v2/tables/${TABLE_NOTES}/records`, {
+            method: "POST",
+            body: JSON.stringify(toCreate),
+          });
+          results.push(...(Array.isArray(created) ? created : [created]));
+        }
+        if (toUpdate.length > 0) {
+          const updated = await ncFetch(env, `/api/v2/tables/${TABLE_NOTES}/records`, {
+            method: "PATCH",
+            body: JSON.stringify(toUpdate),
+          });
+          results.push(...(Array.isArray(updated) ? updated : [updated]));
+        }
+        return json(results);
       }
 
       return json({ error: "not found" }, 404);

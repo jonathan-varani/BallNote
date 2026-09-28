@@ -53,9 +53,10 @@ let PASSWORD = "";
 let JOUEURS = [];
 let MATCHS = [];
 let CURRENT_MATCH = null;
+let NOTES = [];
 
 async function init() {
-  [JOUEURS, MATCHS] = await Promise.all([apiGet("/api/joueurs"), apiGet("/api/matchs")]);
+  [JOUEURS, MATCHS, NOTES] = await Promise.all([apiGet("/api/joueurs"), apiGet("/api/matchs"), apiGet("/api/notes")]);
   JOUEURS.sort((a, b) => (a.prenom || "").localeCompare(b.prenom || ""));
 
   const select = document.getElementById("match-select");
@@ -91,13 +92,25 @@ function openNotesFor(match) {
   criteres.forEach((c, i) => (thead += `<th title="${c}">C${i + 1}</th>`));
   thead += `<th>Total</th></tr>`;
 
+  const existingByJoueur = new Map(
+    NOTES.filter((n) => n.match_id === match.Id).map((n) => [n.joueur_id, n])
+  );
+
   let rows = "";
   JOUEURS.forEach((j) => {
+    const existing = existingByJoueur.get(j.id);
+    let existingDetails = {};
+    if (existing) {
+      try { existingDetails = JSON.parse(existing.details || "{}"); } catch {}
+    }
+    const isPresent = existing ? existing.present !== false : true;
+
     rows += `<tr data-joueur-id="${j.id}" data-prenom="${j.prenom}" data-nom="${j.nom}">`;
     rows += `<td class="pname">${j.prenom} ${j.nom}</td>`;
-    rows += `<td style="text-align:center;"><input type="checkbox" class="present-checkbox" checked></td>`;
+    rows += `<td style="text-align:center;"><input type="checkbox" class="present-checkbox" ${isPresent ? "checked" : ""}></td>`;
     criteres.forEach((c, i) => {
-      rows += `<td style="text-align:center;"><input type="checkbox" data-critere-index="${i}" data-critere-label="${c.replace(/"/g, "&quot;")}"></td>`;
+      const checked = existingDetails[c] ? "checked" : "";
+      rows += `<td style="text-align:center;"><input type="checkbox" data-critere-index="${i}" data-critere-label="${c.replace(/"/g, "&quot;")}" ${checked}></td>`;
     });
     rows += `<td class="row-total" style="text-align:center;font-weight:700;">0</td></tr>`;
   });
@@ -164,6 +177,7 @@ document.getElementById("notes-form").addEventListener("submit", async (e) => {
   msg.textContent = "Enregistrement…";
   try {
     await apiPost("/api/notes", { notes }, PASSWORD);
+    NOTES = await apiGet("/api/notes");
     msg.innerHTML = `<span style="color:#1f9d55;">${notes.length} note(s) enregistrée(s) ✔</span>`;
   } catch (err) {
     msg.innerHTML = `<span style="color:#d33;">Erreur : ${err.message}</span>`;
