@@ -44,7 +44,7 @@
     }
     const matchsById = new Map(matchs.map((m) => [m.Id, m]));
     const mesNotes = notes
-      .filter((n) => n.joueur_id === id)
+      .filter((n) => n.joueur_id === id && (n.present === undefined || n.present))
       .map((n) => ({ ...n, match: matchsById.get(n.match_id) }))
       .filter((n) => n.match)
       .sort((a, b) => new Date(b.match.date_match) - new Date(a.match.date_match));

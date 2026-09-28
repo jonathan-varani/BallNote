@@ -87,7 +87,7 @@ function openNotesFor(match) {
   const criteres = parseCriteres(match);
   const table = document.getElementById("notes-table");
 
-  let thead = `<tr><th style="min-width:140px;">Joueur</th>`;
+  let thead = `<tr><th style="min-width:140px;">Joueur</th><th>Présent</th>`;
   criteres.forEach((c, i) => (thead += `<th title="${c}">C${i + 1}</th>`));
   thead += `<th>Total</th></tr>`;
 
@@ -95,6 +95,7 @@ function openNotesFor(match) {
   JOUEURS.forEach((j) => {
     rows += `<tr data-joueur-id="${j.id}" data-prenom="${j.prenom}" data-nom="${j.nom}">`;
     rows += `<td class="pname">${j.prenom} ${j.nom}</td>`;
+    rows += `<td style="text-align:center;"><input type="checkbox" class="present-checkbox" checked></td>`;
     criteres.forEach((c, i) => {
       rows += `<td style="text-align:center;"><input type="checkbox" data-critere-index="${i}" data-critere-label="${c.replace(/"/g, "&quot;")}"></td>`;
     });
@@ -105,11 +106,19 @@ function openNotesFor(match) {
 
   table.querySelectorAll("tbody tr").forEach((tr) => {
     const total = tr.querySelector(".row-total");
-    tr.querySelectorAll("input[type=checkbox]").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        total.textContent = tr.querySelectorAll("input:checked").length;
-      });
-    });
+    const presentCb = tr.querySelector(".present-checkbox");
+    const critereCbs = tr.querySelectorAll("input[data-critere-index]");
+
+    function refreshRow() {
+      const present = presentCb.checked;
+      critereCbs.forEach((cb) => { cb.disabled = !present; });
+      tr.style.opacity = present ? "1" : "0.45";
+      total.textContent = present ? tr.querySelectorAll("input[data-critere-index]:checked").length : "—";
+    }
+
+    presentCb.addEventListener("change", refreshRow);
+    critereCbs.forEach((cb) => cb.addEventListener("change", refreshRow));
+    refreshRow();
   });
 
   const legend = criteres.map((c, i) => `C${i + 1} = ${c}`).join(" · ");
@@ -130,22 +139,26 @@ document.getElementById("notes-form").addEventListener("submit", async (e) => {
   const rows = document.querySelectorAll("#notes-table tbody tr");
   const notes = [];
   rows.forEach((tr) => {
-    const checkboxes = tr.querySelectorAll("input[type=checkbox]");
-    const checked = Array.from(checkboxes).filter((cb) => cb.checked);
-    if (checked.length === 0) return; // joueur non noté sur ce match (ex: absent)
+    const present = tr.querySelector(".present-checkbox").checked;
+    const critereCbs = tr.querySelectorAll("input[data-critere-index]");
     const details = {};
-    checkboxes.forEach((cb) => { details[cb.dataset.critereLabel] = cb.checked; });
+    let checkedCount = 0;
+    critereCbs.forEach((cb) => {
+      details[cb.dataset.critereLabel] = present && cb.checked;
+      if (present && cb.checked) checkedCount += 1;
+    });
     notes.push({
       match_id: CURRENT_MATCH.Id,
       joueur_id: Number(tr.dataset.joueurId),
       joueur_nom: tr.dataset.nom,
       joueur_prenom: tr.dataset.prenom,
-      note: checked.length,
-      details,
+      present,
+      note: present ? checkedCount : 0,
+      details: present ? details : {},
     });
   });
   if (notes.length === 0) {
-    msg.innerHTML = `<span style="color:#d33;">Coche au moins un critère pour au moins un joueur.</span>`;
+    msg.innerHTML = `<span style="color:#d33;">Aucun joueur à enregistrer.</span>`;
     return;
   }
   msg.textContent = "Enregistrement…";

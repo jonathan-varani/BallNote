@@ -95,6 +95,7 @@ function buildClassement(joueurs, notes) {
   for (const n of notes) {
     const entry = parJoueur.get(n.joueur_id);
     if (!entry) continue;
+    if (n.present !== undefined && !n.present) continue; // absent à ce match : ne compte pas dans les stats
     const val = Number(n.note) || 0;
     entry.total += val;
     entry.matchsJoues += 1;

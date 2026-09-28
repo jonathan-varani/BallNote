@@ -115,6 +115,7 @@ export default {
           joueur_nom: n.joueur_nom || "",
           joueur_prenom: n.joueur_prenom || "",
           note: n.note,
+          present: n.present !== false,
           details: JSON.stringify(n.details || {}),
           commentaire: n.commentaire || "",
         }));
