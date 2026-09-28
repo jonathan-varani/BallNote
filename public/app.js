@@ -101,5 +101,8 @@ function buildClassement(joueurs, notes) {
     entry.matchsJoues += 1;
     entry.notes.push(n);
   }
-  return Array.from(parJoueur.values()).sort((a, b) => b.total - a.total);
+  return Array.from(parJoueur.values()).sort((a, b) => {
+    if (b.total !== a.total) return b.total - a.total;
+    return b.matchsJoues - a.matchsJoues;
+  });
 }
